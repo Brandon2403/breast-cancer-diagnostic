@@ -6,123 +6,131 @@ from sklearn.metrics import accuracy_score, classification_report, confusion_mat
 from sklearn.preprocessing import StandardScaler, LabelEncoder
 import matplotlib.pyplot as plt
 import seaborn as sns
+from pdpbox import pdp
 
-# Assuming 'selected_features' is a list of feature names
-selected_features = ['concave points_mean', 'perimeter_worst', 'concavity_worst', 'compactness_mean', 'compactness_worst', 'radius_se', 'diagnosis']
 
-# Load Your Dataset
-df = pd.read_csv('data.csv')
+def load_data(file_path):
+    """
+    Load data from CSV file.
+    """
+    df = pd.read_csv(file_path)
+    return df
 
-# Convert 'diagnosis' column to numeric values (0 for 'B' and 1 for 'M')
-df['diagnosis'] = df['diagnosis'].map({'B': 0, 'M': 1})
 
-# Use only the selected features and the target variable (diagnosis in this case)
-X = df[selected_features]
-y = df['diagnosis']
+def preprocess_data(df, selected_features):
+    """
+    Preprocess data, perform label encoding, and split into features and target variable.
+    """
+    df['diagnosis'] = df['diagnosis'].map({'B': 0, 'M': 1})
+    X = df[selected_features]
+    y = df['diagnosis']
 
-# Label Encoding for the target variable
-le = LabelEncoder()
-y = le.fit_transform(y)
+    le = LabelEncoder()
+    y = le.fit_transform(y)
 
-# Train-test split
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+    return X, y
 
-# 1. Hyperparameter Tuning
-param_grid = {'C': [0.1, 1, 10, 100], 'kernel': ['linear', 'rbf']}
-grid_search = GridSearchCV(SVC(), param_grid, cv=5, scoring='accuracy')
-grid_search.fit(X_train, y_train)
-best_params = grid_search.best_params_
-print("Best Hyperparameter:", best_params)   # Get the best hyperparameter
 
-# 2. Regularization
-best_svm_model = SVC(**best_params)
-best_svm_model.fit(X_train, y_train)
+def train_svm_model(X_train, y_train, param_grid):
+    """
+    Hyperparameter tuning and model training using SVM.
+    """
+    grid_search = GridSearchCV(SVC(), param_grid, cv=5, scoring='accuracy')
+    grid_search.fit(X_train, y_train)
+    return grid_search
 
-# 3. Feature Scaling
-scaler = StandardScaler()
-X_train_scaled = scaler.fit_transform(X_train)
-X_test_scaled = scaler.transform(X_test)
 
-# Define feature_names
-feature_names = selected_features[:-1]
+def evaluate_model(model, X_test, y_test):
+    """
+    Evaluate model accuracy and plot confusion matrix.
+    """
+    y_pred = model.predict(X_test)
 
-# 4. Train the model with scaled features
-best_svm_model.fit(X_train_scaled, y_train)
+    accuracy = accuracy_score(y_test, y_pred)
+    print(f"Accuracy: {accuracy * 100:.2f}%")
 
-# Make predictions on the test set
-y_pred: object = best_svm_model.predict(X_test_scaled)
+    print("Classification Report:\n", classification_report(y_test, y_pred))
 
-# Evaluate accuracy
-accuracy = accuracy_score(y_test, y_pred)
-print(f"Accuracy: {accuracy * 100:.2f}%")
-
-# Print classification report and confusion matrix
-print("Classification Report:\n", classification_report(y_test, y_pred))
-print("Confusion Matrix:\n", confusion_matrix(y_test, y_pred))
-
-# Create a single figure
-plt.figure(figsize=(14, 5))
-
-# Plot Confusion Matrix
-plt.subplot(1, 2, 1)
-cm = confusion_matrix(y_test, y_pred)
-sns.heatmap(cm, annot=True, fmt='g', cmap='Blues', xticklabels=['Benign', 'Malignant'], yticklabels=['Benign', 'Malignant'])
-plt.xlabel('Predicted')
-plt.ylabel('Actual')
-plt.title('Confusion Matrix')
-
-# Visualize the impact of C on model performance
-plt.subplot(1, 2, 2)
-results = pd.DataFrame(grid_search.cv_results_)
-sns.lineplot(x='param_C', y='mean_test_score', data=results)
-plt.xscale('log')  # Since C values are typically on a logarithmic scale
-plt.xlabel('C')
-plt.ylabel('Mean Test Score')
-plt.title('Hyperparameter Tuning: Impact of C')
-plt.show()
-
-# 6. Interpretability: Analyze support vectors and decision boundary
-# Check if the kernel is linear before accessing coef_
-if best_params['kernel'] == 'linear':
-    # Feature Importance for Linear SVM
-    coef = best_svm_model.coef_[0]
-    plt.bar(range(len(coef)), coef)
-    plt.xticks(range(len(feature_names)), feature_names, rotation=45)
-    plt.xlabel('Features')
-    plt.ylabel('Coefficient Value')
-    plt.title('Feature Importance for Linear SVM')
+    # Plot Confusion Matrix
+    cm = confusion_matrix(y_test, y_pred)
+    sns.heatmap(cm, annot=True, fmt='g', cmap='Blues', xticklabels=['Benign', 'Malignant'],
+                yticklabels=['Benign', 'Malignant'])
+    plt.xlabel('Predicted')
+    plt.ylabel('Actual')
+    plt.title('Confusion Matrix')
     plt.show()
-else:
-    print("Feature importance is not available for non-linear kernels.")
 
-# Predict the decision boundary
-if X_train_scaled.shape[1] == 2:  # Check if there are 2 features for visualization
-    # Use these two features for decision boundary plot
-    h = .02  # step size in the mesh
-    x_min, x_max = X_train_scaled[:, 0].min() - 1, X_train_scaled[:, 0].max() + 1
-    y_min, y_max = X_train_scaled[:, 1].min() - 1, X_train_scaled[:, 1].max() + 1
-    xx, yy = np.meshgrid(np.arange(x_min, x_max, h), np.arange(y_min, y_max, h))
-    Z = best_svm_model.predict(np.c_[xx.ravel(), yy.ravel()])
-    Z = Z.reshape(xx.shape)
 
-    # Plot decision boundary and support vectors
-    plt.figure(figsize=(10, 8))
-
-    # Plot decision boundary
-    plt.contourf(xx, yy, Z, cmap='coolwarm', alpha=0.8)
-
-    # Plot data points
-    plt.scatter(X_train_scaled[:, 0], X_train_scaled[:, 1], c=y_train, cmap='autumn', edgecolors='k', s=20,
-                label='Training Data')
-
-    # Plot support vectors
-    plt.scatter(X_train_scaled[support_vector_indices, 0], X_train_scaled[support_vector_indices, 1],
-                s=100, linewidth=1, facecolors='none', edgecolors='k', label='Support Vectors')
-
-    # Set labels and title
-    plt.xlabel('Feature 1')
-    plt.ylabel('Feature 2')
-    plt.title('Decision Boundary and Support Vectors')
-    plt.legend()
+def visualize_hyperparameter_tuning(grid_search):
+    """
+    Visualize impact of C on model performance.
+    """
+    results = pd.DataFrame(grid_search.cv_results_)
+    sns.lineplot(x='param_C', y='mean_test_score', data=results)
+    plt.xscale('log')  # Since C values are typically on a logarithmic scale
+    plt.xlabel('C')
+    plt.ylabel('Mean Test Score')
+    plt.title('Hyperparameter Tuning: Impact of C')
     plt.show()
-    
+
+
+def visualize_feature_importance(model, feature_names):
+    # Visualize feature importance for linear SVM.
+    if model.kernel == 'linear':
+        coef = model.coef_[0]
+        plt.bar(range(len(coef)), coef)
+        plt.xticks(range(len(feature_names)), feature_names, rotation=45)
+        plt.xlabel('Features')
+        plt.ylabel('Coefficient Value')
+        plt.title('Feature Importance for Linear SVM')
+        plt.show()
+    else:
+        print("Feature importance is not available for non-linear kernels.")
+
+
+def visualize_partial_dependence(model, X_test, feature_names):
+    # Visualize partial dependence plots for selected features.
+    for feature in feature_names:
+        feature_names = X_test.columns.tolist()
+        pdp_feature = pdp.pdp_isolate(model=model, dataset=pd.DataFrame(X_test, columns=feature_names),
+                                      model_features=feature_names, feature=feature)
+        pdp.pdp_plot(pdp_feature, feature_name=feature, plot_lines=True, n_cluster_centers=20)
+        plt.show()
+
+def visualize_pairwise_feature_relationships(df, selected_features):
+    # Visualize pairwise feature relationships.
+    sns.pairplot(df[selected_features], hue='diagnosis', palette='husl')
+    plt.suptitle('Pairwise Feature Relationships', y=1.02)
+    plt.show()
+
+def main():
+    # Configuration
+    data_file_path = 'data.csv'
+    selected_features = ['concave points_mean', 'perimeter_worst', 'concavity_worst', 'compactness_mean',
+                         'compactness_worst', 'radius_se', 'diagnosis']
+
+    # Load data
+    df = load_data(data_file_path)
+
+    # Preprocess data
+    X, y = preprocess_data(df, selected_features)
+
+    # Train-test split
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+    # Hyperparameter tuning
+    param_grid = {'C': [0.1, 1, 10, 100], 'kernel': ['linear', 'rbf']}
+    grid_search = train_svm_model(X_train, y_train, param_grid)
+
+    # Evaluate model
+    best_svm_model = grid_search.best_estimator_
+    evaluate_model(best_svm_model, X_test, y_test)
+
+    # Visualizations
+    visualize_hyperparameter_tuning(grid_search)
+    visualize_feature_importance(best_svm_model, selected_features[:-1])
+    visualize_partial_dependence(best_svm_model, X_test, selected_features[:-1])
+    visualize_pairwise_feature_relationships(df, selected_features)
+
+if __name__ == "__main__":
+    main()

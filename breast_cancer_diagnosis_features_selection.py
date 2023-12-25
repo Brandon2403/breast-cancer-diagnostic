@@ -62,7 +62,6 @@ def correlation_analysis(selected_features=None, remove_redundant=True):
     # Return selected features for further analysis if needed
     return selected_features
 
-
 def calculate_accuracy(selected_features=None):
     # Split data into features and target variable
     X = df.drop('diagnosis', axis=1)
